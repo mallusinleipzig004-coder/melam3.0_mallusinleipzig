@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Onam Check-in Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rozha+One&family=Work+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --cream: #FBF3DE;
+    --leaf: #1E4A2E;
+    --leaf-light: #3E7A4E;
+    --leaf-pale: #E4EEDF;
+    --gold: #C99A2E;
+    --vermilion: #C1442D;
+    --marigold: #E2932B;
+    --ink: #241C13;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    min-height:100vh;
+    background: var(--leaf);
+    color: var(--cream);
+    font-family:'Work Sans',sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: 30px 16px 60px;
+  }
+  h1{
+    font-family:'Rozha One',serif;
+    font-weight:400;
+    font-size: 1.8rem;
+    margin: 6px 0 2px;
+    text-align:center;
+  }
+  .eyebrow{
+    font-family:'Space Mono',monospace;
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+    font-size:0.7rem;
+    color: var(--marigold);
+  }
+  #reader{
+    width: min(92vw, 420px);
+    margin-top: 22px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 2px solid var(--gold);
+  }
+  .status-card{
+    width: min(92vw, 420px);
+    margin-top: 22px;
+    padding: 22px 20px;
+    border-radius: 6px;
+    text-align: center;
+    display: none;
+    font-family: 'Work Sans', sans-serif;
+  }
+  .status-card.show{ display:block; }
+  .status-card .id{
+    font-family:'Space Mono',monospace;
+    font-size:0.75rem;
+    opacity:0.75;
+    margin-top:6px;
+  }
+  .status-card .name{
+    font-family:'Rozha One',serif;
+    font-size: 1.6rem;
+    margin: 8px 0 4px;
+  }
+  .status-card .line{ font-size:0.9rem; }
+  .status-ok{ background: var(--leaf-pale); color: var(--leaf); }
+  .status-warn{ background: #FBE3C0; color: #6b4a12; }
+  .status-bad{ background: #F3D8CF; color: var(--vermilion); }
+
+  .scan-again{
+    margin-top: 18px;
+    background: var(--vermilion);
+    color: var(--cream);
+    border: none;
+    padding: 12px 28px;
+    font-family:'Space Mono',monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    display: none;
+  }
+  .scan-again.show{ display:inline-block; }
+
+  .setup-note{
+    max-width: 420px;
+    margin-top: 20px;
+    font-family:'Space Mono',monospace;
+    font-size: 0.7rem;
+    color: var(--gold);
+    text-align:center;
+    line-height:1.6;
+  }
+  .tally{
+    font-family:'Space Mono',monospace;
+    font-size:0.75rem;
+    color: var(--leaf-pale);
+    margin-top: 14px;
+  }
+</style>
+</head>
+<body>
+  <p class="eyebrow">Entry desk</p>
+  <h1>Onam Check-in</h1>
+  <div class="tally" id="tally">Checked in this session: 0</div>
+
+  <div id="reader"></div>
+
+  <div class="status-card" id="statusCard">
+    <div class="line" id="statusLine">—</div>
+    <div class="name" id="statusName"></div>
+    <div class="line" id="statusExtra"></div>
+    <div class="id" id="statusId"></div>
+  </div>
+
+  <button class="scan-again" id="scanAgainBtn">Scan next</button>
+  <button class="scan-again" id="retryBtn" style="background:var(--marigold);">Retry</button>
+
+  <p class="setup-note" id="setupNote"></p>
+
+<script>
+// ---- Same Apps Script Web App URL as used in index.html ----
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9eZZs6B33U1X_sOcKHkEYYD4AMhboi4lKJFL8PKHOf8xfrwQPHWgYtqdXC8oLtDJivQ/exec";
+
+let sessionCount = 0;
+let scanner = null;
+let processing = false;
+
+function jsonp(url, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'cb_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let settled = false;
+
+    const cleanup = () => {
+      delete window[cbName];
+      script.remove();
+      clearTimeout(timer);
+    };
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Timed out — check your internet connection'));
+    }, timeoutMs);
+
+    window[cbName] = (data) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(data);
+    };
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Network error'));
+    };
+    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
+    document.body.appendChild(script);
+  });
+}
+
+function showStatus(kind, line, name, extra, id) {
+  const card = document.getElementById('statusCard');
+  card.className = 'status-card show status-' + kind;
+  document.getElementById('statusLine').textContent = line;
+  document.getElementById('statusName').textContent = name || '';
+  document.getElementById('statusExtra').textContent = extra || '';
+  document.getElementById('statusId').textContent = id ? ('Ref: ' + id) : '';
+  document.getElementById('scanAgainBtn').classList.add('show');
+}
+
+let lastFailedCode = null;
+
+async function handleScan(decodedText) {
+  if (processing) return;
+  processing = true;
+  await scanner.pause(true);
+
+  try {
+    const data = await jsonp(SCRIPT_URL + '?action=checkin&id=' + encodeURIComponent(decodedText));
+    lastFailedCode = null;
+    document.getElementById('retryBtn').classList.remove('show');
+    if (!data.found) {
+      showStatus('bad', 'Not found', 'No matching registration', 'Check the code or look them up manually', decodedText);
+    } else if (!data.paymentVerified) {
+      showStatus('bad', 'Payment not verified', data.name, 'This registration was never marked as paid — check manually before letting them in', data.regId);
+    } else if (data.alreadyCheckedIn) {
+      showStatus('warn', 'Already checked in', data.name, 'This code was scanned earlier', data.regId);
+    } else {
+      sessionCount++;
+      document.getElementById('tally').textContent = 'Checked in this session: ' + sessionCount;
+      showStatus('ok', 'Checked in', data.name, (data.guests ? data.guests + ' guest(s)' : ''), data.regId);
+    }
+  } catch (err) {
+    lastFailedCode = decodedText;
+    showStatus('bad', 'Connection error', '', err.message + ' — tap Retry once your signal is back', decodedText);
+    document.getElementById('retryBtn').classList.add('show');
+  }
+}
+
+document.getElementById('retryBtn').addEventListener('click', () => {
+  if (!lastFailedCode) return;
+  document.getElementById('retryBtn').classList.remove('show');
+  processing = false;
+  handleScan(lastFailedCode);
+});
+
+document.getElementById('scanAgainBtn').addEventListener('click', () => {
+  document.getElementById('statusCard').classList.remove('show');
+  document.getElementById('scanAgainBtn').classList.remove('show');
+  document.getElementById('retryBtn').classList.remove('show');
+  lastFailedCode = null;
+  processing = false;
+  scanner.resume();
+});
+
+window.addEventListener('load', () => {
+  if (SCRIPT_URL.startsWith('PASTE_')) {
+    document.getElementById('setupNote').textContent =
+      'Set SCRIPT_URL at the top of this file to your Google Apps Script web app URL before using this scanner.';
+  }
+  scanner = new Html5Qrcode('reader');
+  scanner.start(
+    { facingMode: 'environment' },
+    {
+      fps: 12,
+      qrbox: (viewfinderWidth, viewfinderHeight) => {
+        const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+        const size = Math.floor(minEdge * 0.75);
+        return { width: size, height: size };
+      },
+      experimentalFeatures: {
+        useBarCodeDetectorIfSupported: true
+      }
+    },
+    handleScan
+  ).catch(() => {
+    document.getElementById('setupNote').textContent =
+      'Could not access the camera. Make sure you allow camera permission and are viewing this over https://.';
+  });
+});
+</script>
+</body>
+</html>
