@@ -167,7 +167,7 @@
   <p class="sub">A day of Onasadya, games, and Thiruvathira — register once, join in every way you like.</p>
   <div class="meta-strip">
     <div><span class="label">Date</span><span>15 Aug 2026 · Thiruvonam</span></div>
-    <div><span class="label">Time</span><span>10:00 AM onwards</span></div>
+    <div><span class="label">Time</span><span>10:30 AM onwards</span></div>
     <div><span class="label">Venue</span><span><a class="venue-link" href="https://www.google.com/maps/search/?api=1&amp;query=Heidestrasse+318%2C+06849+Dessau" target="_blank" rel="noopener">Heidestrasse 318 (Dessau 06849)</a></span></div>
   </div>
   <button class="cta-btn" onclick="document.getElementById('register').scrollIntoView()">Register now</button>
@@ -439,11 +439,11 @@ document.getElementById('regForm').addEventListener('submit', async (e) => {
     }
 
     const cleanName = nameVal.replace(/[^a-zA-Z0-9 ]/g, '').toUpperCase();
-    const pricePerPerson = 19.99;
+    const pricePerPerson = 22.80;
     const totalAmount = (guestCount * pricePerPerson).toFixed(2);
 
     document.querySelector('.amount-card .amount').textContent = `€ ${totalAmount}`;
-    document.querySelector('.amount-card .amount-note').textContent = `${guestCount} × € 19.99 per person`;
+    document.querySelector('.amount-card .amount-note').textContent = `${guestCount} × € 22.80 per person`;
 
     renderPaymentDetails(`${cleanName} ${regId}`);
 
